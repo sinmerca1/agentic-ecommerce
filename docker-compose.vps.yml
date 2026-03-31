@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: agentic-ecommerce
+    ports:
+      - "8002:8002"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_FROM=noreply@agentic-ecommerce.local
+      - PORT=8002
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      mailhog:
+        condition: service_started
+    networks:
+      - agentic-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Elasticsearch for data storage (using different port than gurrex-elasticsearch)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    container_name: elasticsearch-agentic
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    ports:
+      - "9201:9200"
+    networks:
+      - agentic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ollama for LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-agentic
+    ports:
+      - "11436:11434"
+    networks:
+      - agentic-network
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MailHog for local SMTP and email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog-agentic
+    ports:
+      - "1027:1025"  # SMTP
+      - "8027:8025"  # Web UI
+    networks:
+      - agentic-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  agentic-network:
+    driver: bridge
+
+volumes:
+  ollama-data:
