@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: agentic-ecommerce-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_FROM=noreply@agentic-ecommerce.local
+    volumes:
+      - ./src:/app/src
+      - ./dist:/app/dist
+    depends_on:
+      - elasticsearch
+      - ollama
+      - mailhog
+    networks:
+      - agentic-network-dev
+    command: npm run dev
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    container_name: elasticsearch-dev
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    ports:
+      - "9200:9200"
+    networks:
+      - agentic-network-dev
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-dev
+    ports:
+      - "11434:11434"
+    networks:
+      - agentic-network-dev
+    volumes:
+      - ollama-data-dev:/root/.ollama
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog-dev
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - agentic-network-dev
+
+networks:
+  agentic-network-dev:
+    driver: bridge
+
+volumes:
+  ollama-data-dev:
