@@ -5,7 +5,7 @@ services:
     build: .
     container_name: agentic-ecommerce
     ports:
-      - "8002:8002"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
@@ -17,7 +17,7 @@ services:
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
       - SMTP_FROM=noreply@agentic-ecommerce.local
-      - PORT=8002
+      - PORT=3000
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -28,7 +28,7 @@ services:
     networks:
       - agentic-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -43,7 +43,7 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
     ports:
-      - "9201:9200"
+      - "9200:9200"
     networks:
       - agentic-network
     healthcheck:
@@ -75,8 +75,8 @@ services:
     image: mailhog/mailhog:latest
     container_name: mailhog
     ports:
-      - "1026:1025"  # SMTP
-      - "8026:8025"  # Web UI
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
     networks:
       - agentic-network
     healthcheck:

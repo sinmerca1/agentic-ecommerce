@@ -37,8 +37,8 @@ When responding to pricing queries:
     try {
       this.logger.info('Processing pricing query:', { query: lastMessage });
 
-      // Search for relevant products
-      const products = await elasticsearchService.searchProducts(lastMessage, 5);
+      // Search for relevant products using gurrex_products index
+      const products = await elasticsearchService.findProductsByNameOrDescription(lastMessage, 5);
 
       if (products.length === 0) {
         const response = "I couldn't find any products matching your query. Could you please provide more details about what you're looking for?";
@@ -47,11 +47,15 @@ When responding to pricing queries:
 
       // Generate response with product information
       const context = {
-        products: products.map((p: Product) => ({
+        products: products.map((p: any) => ({
+          product_id: p.product_id,
           name: p.name,
+          description: p.description,
           price: p.price,
           stock: p.stock,
           category: p.category,
+          rating: p.rating,
+          status: p.status,
         })),
       };
 

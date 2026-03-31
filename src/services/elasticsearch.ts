@@ -13,7 +13,7 @@ const elasticsearchClient = new Client({
 // Service class for Elasticsearch operations
 class ElasticsearchService {
   private client: Client;
-  private productsIndex = 'products';
+  private productsIndex = 'gurrex_products';
   private ticketsIndex = 'support_tickets';
 
   constructor(client: Client) {
@@ -66,7 +66,7 @@ class ElasticsearchService {
     }
   }
 
-  async searchProducts(query: string, limit: number = 10): Promise<Product[]> {
+  async searchProducts(query: string, limit: number = 10): Promise<any[]> {
     try {
       const result = await this.client.search({
         index: this.productsIndex,
@@ -74,16 +74,22 @@ class ElasticsearchService {
         query: {
           multi_match: {
             query,
-            fields: ['name^2', 'description', 'category', 'sku'],
+            fields: ['name^2', 'description', 'category'],
+            fuzziness: 'AUTO',
           },
         },
       });
 
       return (result.hits.hits || []).map((hit: any) => ({
-        ...hit._source,
-        id: hit._id,
-        createdAt: new Date(hit._source.createdAt),
-        updatedAt: new Date(hit._source.updatedAt),
+        product_id: hit._source.product_id || hit._id,
+        name: hit._source.name,
+        description: hit._source.description,
+        price: hit._source.price,
+        stock: hit._source.stock,
+        category: hit._source.category,
+        rating: hit._source.rating,
+        images: hit._source.images,
+        status: hit._source.status,
       }));
     } catch (error) {
       console.error('Error searching products:', error);
@@ -215,6 +221,126 @@ class ElasticsearchService {
     } catch (error) {
       console.error('Error updating ticket:', error);
       throw error;
+    }
+  }
+
+  async searchGurrexProducts(searchTerm: string, limit: number = 10): Promise<any[]> {
+    try {
+      const result = await this.client.search({
+        index: this.productsIndex,
+        size: limit,
+        query: {
+          bool: {
+            must: [
+              {
+                multi_match: {
+                  query: searchTerm,
+                  fields: ['name^3', 'description^2', 'category'],
+                  fuzziness: 'AUTO',
+                  operator: 'or',
+                },
+              },
+            ],
+            filter: [
+              {
+                term: { status: 'active' },
+              },
+            ],
+          },
+        },
+      });
+
+      return (result.hits.hits || []).map((hit: any) => {
+        const source = hit._source;
+        return {
+          product_id: source.product_id || hit._id,
+          name: source.name,
+          description: source.description,
+          price: source.price,
+          stock: source.stock,
+          category: source.category,
+          rating: source.rating || 0,
+          images: source.images || [],
+          status: source.status,
+          relevance_score: hit._score,
+        };
+      });
+    } catch (error) {
+      console.error('Error searching gurrex products:', error);
+      return [];
+    }
+  }
+
+  async findProductsByNameOrDescription(searchTerm: string, limit: number = 10): Promise<any[]> {
+    try {
+      const result = await this.client.search({
+        index: this.productsIndex,
+        size: limit,
+        query: {
+          bool: {
+            should: [
+              {
+                match: {
+                  name: {
+                    query: searchTerm,
+                    boost: 3,
+                    fuzziness: 'AUTO',
+                  },
+                },
+              },
+              {
+                match: {
+                  description: {
+                    query: searchTerm,
+                    boost: 1.5,
+                    fuzziness: 'AUTO',
+                  },
+                },
+              },
+              {
+                match: {
+                  category: {
+                    query: searchTerm,
+                    boost: 2,
+                  },
+                },
+              },
+            ],
+            minimum_should_match: 1,
+            filter: [
+              {
+                term: { status: 'active' },
+              },
+              {
+                range: { stock: { gte: 0 } },
+              },
+            ],
+          },
+        },
+        sort: [
+          { _score: { order: 'desc' } },
+          { price: { order: 'asc' } },
+        ],
+      });
+
+      return (result.hits.hits || []).map((hit: any) => {
+        const source = hit._source;
+        return {
+          product_id: source.product_id || hit._id,
+          name: source.name,
+          description: source.description,
+          price: source.price,
+          stock: source.stock,
+          category: source.category,
+          rating: source.rating || 0,
+          images: source.images || [],
+          status: source.status,
+          relevance_score: hit._score,
+        };
+      });
+    } catch (error) {
+      console.error('Error finding products by name or description:', error);
+      return [];
     }
   }
 }

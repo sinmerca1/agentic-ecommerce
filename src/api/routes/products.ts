@@ -25,7 +25,7 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
   try {
     const { query, limit } = SearchSchema.parse(req.query);
 
-    const products = await elasticsearchService.searchProducts(query, limit || 10);
+    const products = await elasticsearchService.findProductsByNameOrDescription(query, limit || 10);
 
     res.json({
       success: true,
@@ -37,12 +37,13 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-// Get product by ID
+// Get product by ID (from gurrex_products index)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const product = await elasticsearchService.getProduct(req.params.id);
+    // Try to get product by product_id or document id
+    const result = await elasticsearchService.getProduct(req.params.id);
 
-    if (!product) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         error: 'Product not found',
@@ -51,7 +52,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
     res.json({
       success: true,
-      product,
+      product: result,
     });
   } catch (error) {
     next(error);

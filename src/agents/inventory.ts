@@ -38,8 +38,8 @@ When responding to inventory queries:
     try {
       this.logger.info('Processing inventory query:', { query: lastMessage });
 
-      // Search for relevant products
-      const products = await elasticsearchService.searchProducts(lastMessage, 5);
+      // Search for relevant products using gurrex_products index
+      const products = await elasticsearchService.searchGurrexProducts(lastMessage, 5);
 
       if (products.length === 0) {
         const response = "I couldn't find any products matching your inventory query. Could you please provide more details?";
@@ -48,14 +48,16 @@ When responding to inventory queries:
 
       // Check inventory levels
       const lowStockThreshold = state.context?.lowStockThreshold || 10;
-      const lowStockProducts = products.filter((p: Product) => p.stock < lowStockThreshold);
+      const lowStockProducts = products.filter((p: any) => p.stock < lowStockThreshold);
 
       const context = {
-        products: products.map((p: Product) => ({
+        products: products.map((p: any) => ({
+          product_id: p.product_id,
           name: p.name,
           stock: p.stock,
-          sku: p.sku,
+          category: p.category,
           lowStock: p.stock < lowStockThreshold,
+          price: p.price,
         })),
         lowStockProducts: lowStockProducts.length,
         threshold: lowStockThreshold,
