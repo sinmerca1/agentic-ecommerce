@@ -21,10 +21,15 @@ export abstract class BaseAgent {
     const systemPrompt = this.systemPrompt();
     const conversationContext = this.formatContext(context);
 
+    // Combine system prompt with context
+    const fullSystemPrompt = conversationContext
+      ? `${systemPrompt}\n\n${conversationContext}`
+      : systemPrompt;
+
     try {
       const response = await ollamaService.generateText(
         userMessage,
-        systemPrompt,
+        fullSystemPrompt,
         0.7
       );
       return response.trim();
