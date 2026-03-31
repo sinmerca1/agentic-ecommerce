@@ -1,4 +1,4 @@
-import { Client } from 'elasticsearch';
+import { Client } from '@elastic/elasticsearch';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { ElasticsearchError } from '../utils/errors';
