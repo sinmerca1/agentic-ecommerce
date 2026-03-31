@@ -9,12 +9,12 @@ services:
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
-      - ELASTICSEARCH_HOST=172.20.0.2
+      - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
       - PRODUCTS_INDEX=gurrex_products
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2:3b
-      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - OLLAMA_EMBED_MODEL=nomic-embed-text:latest
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
       - SMTP_FROM=noreply@agentic-ecommerce.local
@@ -26,14 +26,13 @@ services:
         condition: service_started
     networks:
       - agentic-network
+      - elasticsearch_gurrex-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 5s
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   # Ollama for LLM inference
   ollama:
@@ -71,6 +70,8 @@ services:
 networks:
   agentic-network:
     driver: bridge
+  elasticsearch_gurrex-network:
+    external: true
 
 volumes:
   ollama-data:
