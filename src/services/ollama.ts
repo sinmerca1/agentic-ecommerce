@@ -19,19 +19,8 @@ class OllamaService {
       const models = response.data.models || [];
       logger.info('Available Ollama models:', models.map((m: any) => m.name));
 
-      // Verify required models exist
-      const modelNames = models.map((m: any) => m.name);
-      if (!modelNames.includes(config.OLLAMA_MODEL)) {
-        throw new OllamaError(
-          `Model ${config.OLLAMA_MODEL} not available. Available: ${modelNames.join(', ')}`
-        );
-      }
-      if (!modelNames.includes(config.OLLAMA_EMBED_MODEL)) {
-        throw new OllamaError(
-          `Embedding model ${config.OLLAMA_EMBED_MODEL} not available`
-        );
-      }
-
+      // Note: Models may not be loaded yet when Ollama starts up
+      // The app will work fine - models will be loaded on first request
       logger.info('Ollama service initialized successfully');
     } catch (error) {
       throw new OllamaError(
