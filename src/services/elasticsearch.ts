@@ -13,11 +13,13 @@ const elasticsearchClient = new Client({
 // Service class for Elasticsearch operations
 class ElasticsearchService {
   private client: Client;
-  private productsIndex = 'gurrex_products';
+  private productsIndex: string;
   private ticketsIndex = 'support_tickets';
 
   constructor(client: Client) {
     this.client = client;
+    // Read products index from environment variable, default to gurrex_products
+    this.productsIndex = process.env.PRODUCTS_INDEX || 'gurrex_products';
   }
 
   async initialize() {
