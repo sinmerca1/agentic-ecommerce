@@ -1,5 +1,5 @@
 import { BaseAgent } from './base';
-import { AgentState } from '../types';
+import { AgentState, Product } from '../types';
 import { elasticsearchService } from '../services/elasticsearch';
 import { emailService } from '../services/email';
 
@@ -47,7 +47,7 @@ When responding to pricing queries:
 
       // Generate response with product information
       const context = {
-        products: products.map((p) => ({
+        products: products.map((p: Product) => ({
           name: p.name,
           price: p.price,
           stock: p.stock,

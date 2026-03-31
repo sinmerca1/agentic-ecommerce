@@ -15,11 +15,21 @@ async function bootstrap() {
 
     // Initialize Ollama
     logger.info('Connecting to Ollama...');
-    await ollamaService.initialize();
+    try {
+      await ollamaService.initialize();
+    } catch (error) {
+      logger.warn(`Ollama initialization failed, continuing without LLM support: ${error instanceof Error ? error.message : String(error)}`);
+      // Continue without Ollama - it may be needed later or models may be downloaded
+    }
 
     // Initialize Email service
     logger.info('Initializing Email service...');
-    await emailService.initialize();
+    try {
+      await emailService.initialize();
+    } catch (error) {
+      logger.warn(`Email service initialization failed, continuing without email support: ${error instanceof Error ? error.message : String(error)}`);
+      // Continue without email - it may be needed later
+    }
 
     // Create and start Express app
     const app = createApp();

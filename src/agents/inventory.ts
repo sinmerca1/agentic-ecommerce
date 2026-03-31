@@ -1,5 +1,5 @@
 import { BaseAgent } from './base';
-import { AgentState } from '../types';
+import { AgentState, Product } from '../types';
 import { elasticsearchService } from '../services/elasticsearch';
 import { emailService } from '../services/email';
 
@@ -48,10 +48,10 @@ When responding to inventory queries:
 
       // Check inventory levels
       const lowStockThreshold = state.context?.lowStockThreshold || 10;
-      const lowStockProducts = products.filter((p) => p.stock < lowStockThreshold);
+      const lowStockProducts = products.filter((p: Product) => p.stock < lowStockThreshold);
 
       const context = {
-        products: products.map((p) => ({
+        products: products.map((p: Product) => ({
           name: p.name,
           stock: p.stock,
           sku: p.sku,
