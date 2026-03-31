@@ -2,9 +2,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
+# Copy package files
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+
+# Install ALL dependencies (including dev for build)
+RUN npm install && npm cache clean --force
 
 # Copy source code
 COPY . .
@@ -12,13 +14,9 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-# Remove dev dependencies
+# Remove dev dependencies for production
 RUN npm prune --production
 
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-CMD ["npm", "start"]
+CMD ["node", "dist/index.js"]
