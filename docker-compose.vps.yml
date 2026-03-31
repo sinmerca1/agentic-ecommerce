@@ -9,10 +9,9 @@ services:
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
-      - ELASTICSEARCH_HOST=127.0.0.1
+      - ELASTICSEARCH_HOST=172.20.0.2
       - ELASTICSEARCH_PORT=9200
       - PRODUCTS_INDEX=gurrex_products
-    network_mode: host
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2:3b
       - OLLAMA_EMBED_MODEL=nomic-embed-text
