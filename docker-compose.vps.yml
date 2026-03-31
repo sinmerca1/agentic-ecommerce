@@ -9,8 +9,7 @@ services:
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
-      - ELASTICSEARCH_HOST=host.docker.internal
-      - ELASTICSEARCH_PORT=9200
+      - ELASTICSEARCH_URL=http://host.docker.internal:9200
       - PRODUCTS_INDEX=gurrex_products
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2:3b
