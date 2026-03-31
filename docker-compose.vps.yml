@@ -9,7 +9,7 @@ services:
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
-      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_HOST=host.docker.internal
       - ELASTICSEARCH_PORT=9200
       - PRODUCTS_INDEX=gurrex_products
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -20,8 +20,6 @@ services:
       - SMTP_FROM=noreply@agentic-ecommerce.local
       - PORT=8002
     depends_on:
-      elasticsearch:
-        condition: service_healthy
       ollama:
         condition: service_started
       mailhog:
@@ -34,24 +32,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-
-  # Elasticsearch for data storage (using different port than gurrex-elasticsearch)
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
-    container_name: elasticsearch-agentic
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
-    ports:
-      - "9201:9200"
-    networks:
-      - agentic-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Ollama for LLM inference
   ollama:
