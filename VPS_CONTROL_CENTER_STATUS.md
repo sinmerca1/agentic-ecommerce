@@ -1,7 +1,7 @@
 # 🎉 Agent Control Center - VPS Deployment Status
 
-**Date**: 2026-04-01 08:33 UTC  
-**Status**: ✅ **OPERATIONAL**
+**Date**: 2026-04-01 08:36 UTC  
+**Status**: ✅ **FULLY OPERATIONAL - 502 RESOLVED**
 
 ---
 
@@ -20,9 +20,9 @@
 - **Documents**: 46 Gurrex pet products
 
 ### Dashboard
-- **Server**: Python http.server on port 9000 ✅
+- **Server**: Python http.server on port 8001 ✅
 - **Files**: Synced from local
-- **Status**: Running
+- **Status**: Running (Fixed: port 9000 was in use by PHP-FPM)
 
 ### Web Server
 - **Nginx**: ✅ Active
@@ -79,14 +79,13 @@
 
 ---
 
-## 🔧 Container Configuration
+## 🔧 Configuration
 
+### API Container
 ```bash
-# Running with:
 docker run -d \
   --name agentic-ecommerce \
   --network host \
-  -p 8002:3000 \
   -e NODE_ENV=production \
   -e PORT=8002 \
   -e ELASTICSEARCH_HOST=127.0.0.1 \
@@ -94,6 +93,16 @@ docker run -d \
   -e PRODUCTS_INDEX=gurrex_products \
   agentic-ecommerce-app
 ```
+
+### Dashboard Server
+```bash
+cd /home/claude-ai/agentic-ecommerce/dashboard
+python3 -m http.server 8001
+```
+
+### Nginx Proxy (note: Cloudflare handles SSL)
+- Dashboard location → `http://127.0.0.1:8001`
+- API location → `http://127.0.0.1:8002`
 
 ---
 
@@ -139,17 +148,36 @@ The Agent Control Center is **fully operational** and ready for:
 
 ## 📞 Troubleshooting
 
+### If Dashboard Returns 502 Bad Gateway
+**Root Cause**: Port 9000 may be in use by another service (e.g., PHP-FPM)
+
+**Solution**: Use a different port
+```bash
+# Find available port
+for port in 8001 8003 8888 3001 5000; do
+  netstat -tlnp | grep ":$port " || echo "Port $port free"
+done
+
+# Start dashboard on available port (e.g., 8001)
+pkill -f "http.server"
+cd /home/claude-ai/agentic-ecommerce/dashboard
+python3 -m http.server 8001 &
+
+# Update nginx /etc/nginx/sites-available/agent-control
+# Change: proxy_pass http://127.0.0.1:8001;
+# Then: sudo nginx -t && sudo systemctl reload nginx
+```
+
 ### If Dashboard Not Loading
 ```bash
 # Check dashboard server
 ps aux | grep http.server
 
-# Restart dashboard
-cd /home/claude-ai/agentic-ecommerce/dashboard
-python3 -m http.server 9000 &
+# Check port binding
+sudo netstat -tlnp | grep 8001
 
 # Test directly
-curl http://localhost:9000
+curl http://localhost:8001
 ```
 
 ### If API Not Responding
@@ -191,6 +219,7 @@ netstat -tlnp | grep 9200
 - **Dashboard Load Time**: <1s
 - **Elasticsearch Query**: <50ms
 - **Uptime Target**: 24/7
+- **SSL/TLS**: Handled by Cloudflare (HTTPS traffic only)
 
 ---
 
@@ -229,8 +258,10 @@ netstat -tlnp | grep 9200
 - **Method**: Manual VPS deployment + Docker container
 - **Container Image**: agentic-ecommerce-app
 - **Host**: mail.mercadabra.com (IP: 208.85.22.201)
-- **Services**: API, Elasticsearch, Dashboard, Nginx
+- **Services**: API (port 8002), Elasticsearch, Dashboard (port 8001), Nginx
+- **SSL/TLS**: Cloudflare (no local SSL config needed)
 - **Uptime**: Since 2026-03-31 18:36 UTC
+- **Issues Fixed**: 502 Bad Gateway - moved dashboard from port 9000 (PHP-FPM conflict) to port 8001
 
 ---
 
