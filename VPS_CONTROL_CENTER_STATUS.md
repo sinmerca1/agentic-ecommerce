@@ -1,7 +1,7 @@
 # 🎉 Agent Control Center - VPS Deployment Status
 
-**Date**: 2026-04-01 08:36 UTC  
-**Status**: ✅ **FULLY OPERATIONAL - 502 RESOLVED**
+**Date**: 2026-04-01 08:37 UTC  
+**Status**: ✅ **FULLY OPERATIONAL - ALL ISSUES RESOLVED**
 
 ---
 
@@ -100,9 +100,14 @@ cd /home/claude-ai/agentic-ecommerce/dashboard
 python3 -m http.server 8001
 ```
 
-### Nginx Proxy (note: Cloudflare handles SSL)
-- Dashboard location → `http://127.0.0.1:8001`
-- API location → `http://127.0.0.1:8002`
+### Nginx Proxy Configuration
+```nginx
+# Dashboard: /control → proxies to http://127.0.0.1:8001/
+# API: /api/ → proxies to http://127.0.0.1:8002
+
+# Important: No HTTPS redirect needed - Cloudflare handles SSL
+# Nginx receives HTTP traffic from Cloudflare and proxies to local services
+```
 
 ---
 
@@ -148,25 +153,31 @@ The Agent Control Center is **fully operational** and ready for:
 
 ## 📞 Troubleshooting
 
-### If Dashboard Returns 502 Bad Gateway
-**Root Cause**: Port 9000 may be in use by another service (e.g., PHP-FPM)
+### If Dashboard Returns 404 or 502
+**Root Causes and Solutions**:
 
-**Solution**: Use a different port
-```bash
-# Find available port
-for port in 8001 8003 8888 3001 5000; do
-  netstat -tlnp | grep ":$port " || echo "Port $port free"
-done
+1. **Dashboard server not running**
+   ```bash
+   ps aux | grep "[h]ttp.server"
+   # If not running, start it:
+   cd /home/claude-ai/agentic-ecommerce/dashboard
+   python3 -m http.server 8001 &
+   ```
 
-# Start dashboard on available port (e.g., 8001)
-pkill -f "http.server"
-cd /home/claude-ai/agentic-ecommerce/dashboard
-python3 -m http.server 8001 &
+2. **Port already in use**
+   ```bash
+   netstat -tlnp | grep ":8001"
+   # If port 8001 is in use, try 8003, 8888, etc.
+   ```
 
-# Update nginx /etc/nginx/sites-available/agent-control
-# Change: proxy_pass http://127.0.0.1:8001;
-# Then: sudo nginx -t && sudo systemctl reload nginx
-```
+3. **Nginx path routing issue**
+   - Ensure nginx config has: `proxy_pass http://127.0.0.1:8001/;` (with trailing slash)
+   - This tells nginx to rewrite `/control` to `/` when forwarding to Python's SimpleHTTPServer
+
+4. **Cloudflare SSL handling**
+   - Since Cloudflare handles HTTPS, nginx should NOT redirect HTTP to HTTPS
+   - Nginx receives HTTP from Cloudflare and proxies to local services
+   - `X-Forwarded-Proto: https` header tells services they're secure
 
 ### If Dashboard Not Loading
 ```bash
@@ -258,10 +269,21 @@ netstat -tlnp | grep 9200
 - **Method**: Manual VPS deployment + Docker container
 - **Container Image**: agentic-ecommerce-app
 - **Host**: mail.mercadabra.com (IP: 208.85.22.201)
-- **Services**: API (port 8002), Elasticsearch, Dashboard (port 8001), Nginx
-- **SSL/TLS**: Cloudflare (no local SSL config needed)
+- **Services**: API (port 8002), Elasticsearch (port 9200), Dashboard (port 8001), Nginx (HTTP only)
+- **SSL/TLS**: Cloudflare handles all HTTPS traffic
 - **Uptime**: Since 2026-03-31 18:36 UTC
-- **Issues Fixed**: 502 Bad Gateway - moved dashboard from port 9000 (PHP-FPM conflict) to port 8001
+
+### Issues Fixed (2026-04-01)
+1. **502 Bad Gateway** - Dashboard was on port 9000 (PHP-FPM conflict)
+   - Solution: Moved to port 8001, updated nginx config
+   
+2. **404 Not Found** - Nginx path routing issue
+   - Root cause: Python SimpleHTTPServer looking for `/control` directory
+   - Solution: Use `proxy_pass http://127.0.0.1:8001/;` with trailing slash
+   
+3. **HTTP redirect loop** - Nginx was redirecting to HTTPS
+   - Root cause: Cloudflare handles SSL, not nginx
+   - Solution: Remove HTTP→HTTPS redirect, keep HTTP-only nginx config
 
 ---
 
