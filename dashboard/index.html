@@ -4,6 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Control Center</title>
+    <script>
+        // Authentication check - run before anything else loads
+        (function() {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                // No token, redirect to login
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // Verify token is still valid
+            fetch('/api/auth/me', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }).then(res => {
+                if (!res.ok) {
+                    // Token is invalid, clear and redirect to login
+                    localStorage.removeItem('authToken');
+                    window.location.href = '/login.html';
+                }
+            }).catch(() => {
+                // Error verifying token, redirect to login
+                localStorage.removeItem('authToken');
+                window.location.href = '/login.html';
+            });
+        })();
+    </script>
     <style>
         * {
             margin: 0;
@@ -414,6 +442,10 @@
             <div class="status-badge">
                 <div class="dot online" id="status-cache"></div>
                 <span>Cache</span>
+            </div>
+            <div style="border-left: 1px solid #00ff00; padding-left: 15px; margin-left: 15px;">
+                <span style="color: #00cc33; font-size: 12px;" id="user-info">Loading...</span>
+                <button onclick="logout()" style="background: #ff3333; color: white; border: 1px solid #ff3333; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 11px; margin-left: 10px;">Logout</button>
             </div>
         </div>
     </header>

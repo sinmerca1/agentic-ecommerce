@@ -5,8 +5,13 @@ import { elasticsearchService } from '../../services/elasticsearch';
 import { ollamaService } from '../../services/ollama';
 import { cacheService } from '../../services/cache';
 import { logger } from '../../utils/logger';
+import { verifyAuth, auditLog } from '../middleware/auth';
 
 const router = Router();
+
+// Apply authentication and audit logging to all control panel routes
+router.use(verifyAuth);
+router.use(auditLog);
 
 // SSE endpoint for real-time dashboard updates
 router.get('/events', (req: Request, res: Response) => {
