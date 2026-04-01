@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 
 interface AuthToken {
@@ -17,14 +19,23 @@ interface AuthUser {
   active: boolean;
   createdAt: number;
   lastLogin?: number;
+  totpSecret?: string;
+  totpEnabled: boolean;
 }
+
+type LoginResult =
+  | { type: 'success'; token: AuthToken }
+  | { type: 'totp_required'; challengeToken: string }
+  | null;
 
 class AuthService {
   private tokens: Map<string, AuthToken> = new Map();
   private users: Map<string, AuthUser> = new Map();
   private readonly TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
   private readonly MAX_LOGIN_ATTEMPTS = 5;
+  private readonly CHALLENGE_EXPIRY = 5 * 60 * 1000; // 5 minutes
   private loginAttempts: Map<string, { count: number; lockedUntil: number }> = new Map();
+  private pendingTotp: Map<string, { userId: string; expiresAt: number }> = new Map();
 
   constructor() {
     this.initializeDefaultAdmin();
@@ -46,6 +57,7 @@ class AuthService {
       role: 'admin',
       active: true,
       createdAt: Date.now(),
+      totpEnabled: false,
     });
 
     logger.info(`🔐 Default admin user initialized`);
@@ -96,7 +108,7 @@ class AuthService {
     this.loginAttempts.delete(username);
   }
 
-  login(username: string, password: string): AuthToken | null {
+  login(username: string, password: string): LoginResult {
     // Check if account is locked
     if (this.isAccountLocked(username)) {
       logger.warn(`❌ Login attempt on locked account: ${username}`);
@@ -129,7 +141,18 @@ class AuthService {
     // Clear failed attempts
     this.clearFailedAttempts(username);
 
-    // Generate token
+    // If 2FA is enabled, return challenge token instead of session token
+    if (user.totpEnabled) {
+      const challengeToken = crypto.randomBytes(16).toString('hex');
+      this.pendingTotp.set(challengeToken, {
+        userId: user.id,
+        expiresAt: Date.now() + this.CHALLENGE_EXPIRY,
+      });
+      logger.info(`✅ Password verified, 2FA required: ${username}`);
+      return { type: 'totp_required', challengeToken };
+    }
+
+    // Generate session token
     const token = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
     const authToken: AuthToken = {
@@ -145,7 +168,7 @@ class AuthService {
     user.lastLogin = now;
 
     logger.info(`✅ User logged in: ${username}`);
-    return authToken;
+    return { type: 'success', token: authToken };
   }
 
   logout(token: string): boolean {
@@ -209,6 +232,7 @@ class AuthService {
       role,
       active: true,
       createdAt: Date.now(),
+      totpEnabled: false,
     };
 
     this.users.set(userId, newUser);
@@ -242,6 +266,133 @@ class AuthService {
 
     user.active = true;
     logger.info(`✅ User activated: ${user.username}`);
+    return true;
+  }
+
+  async setupTotp(userId: string): Promise<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string } | null> {
+    const user = this.users.get(userId);
+    if (!user) {
+      logger.warn(`❌ TOTP setup failed - user not found: ${userId}`);
+      return null;
+    }
+
+    // Generate TOTP secret
+    const secret = speakeasy.generateSecret({
+      name: `Agent Control Center (${user.email})`,
+      issuer: 'Agent Control Center',
+      length: 32,
+    });
+
+    if (!secret.otpauth_url) {
+      logger.error(`❌ Failed to generate TOTP otpauth URL`);
+      return null;
+    }
+
+    // Generate QR code data URL
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
+      logger.info(`✅ TOTP setup initiated for: ${user.username}`);
+      return { secret: secret.base32, otpauthUrl: secret.otpauth_url, qrCodeDataUrl };
+    } catch (error) {
+      logger.error(`❌ QR code generation failed:`, error);
+      return null;
+    }
+  }
+
+  verifyAndEnableTotp(userId: string, secret: string, code: string): boolean {
+    const user = this.users.get(userId);
+    if (!user) {
+      logger.warn(`❌ TOTP enable failed - user not found: ${userId}`);
+      return false;
+    }
+
+    // Verify the code is correct (allows ±1 time window for clock skew)
+    const isValid = speakeasy.totp.verify({
+      secret,
+      encoding: 'base32',
+      token: code,
+      window: 2,
+    });
+
+    if (!isValid) {
+      logger.warn(`❌ TOTP verification failed - invalid code: ${user.username}`);
+      return false;
+    }
+
+    // Enable TOTP and store secret
+    user.totpSecret = secret;
+    user.totpEnabled = true;
+    logger.info(`✅ TOTP enabled for: ${user.username}`);
+    return true;
+  }
+
+  verifyTotp(challengeToken: string, code: string): AuthToken | null {
+    // Get pending TOTP challenge
+    const challenge = this.pendingTotp.get(challengeToken);
+    if (!challenge) {
+      logger.warn(`❌ TOTP verification failed - invalid challenge token`);
+      return null;
+    }
+
+    // Check if challenge expired
+    if (Date.now() > challenge.expiresAt) {
+      this.pendingTotp.delete(challengeToken);
+      logger.warn(`❌ TOTP verification failed - challenge expired`);
+      return null;
+    }
+
+    // Get user
+    const user = this.users.get(challenge.userId);
+    if (!user || !user.totpSecret) {
+      logger.warn(`❌ TOTP verification failed - user not found or TOTP not enabled`);
+      return null;
+    }
+
+    // Verify TOTP code (allows ±1 time window for clock skew)
+    const isValid = speakeasy.totp.verify({
+      secret: user.totpSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2,
+    });
+
+    if (!isValid) {
+      logger.warn(`❌ TOTP verification failed - invalid code: ${user.username}`);
+      return null;
+    }
+
+    // Clean up challenge token
+    this.pendingTotp.delete(challengeToken);
+
+    // Generate session token
+    const token = crypto.randomBytes(32).toString('hex');
+    const now = Date.now();
+    const authToken: AuthToken = {
+      token,
+      userId: user.id,
+      createdAt: now,
+      expiresAt: now + this.TOKEN_EXPIRY,
+    };
+
+    this.tokens.set(token, authToken);
+
+    // Update last login
+    user.lastLogin = now;
+
+    logger.info(`✅ User logged in via TOTP: ${user.username}`);
+    return authToken;
+  }
+
+  disableTotp(userId: string): boolean {
+    const user = this.users.get(userId);
+    if (!user) {
+      logger.warn(`❌ TOTP disable failed - user not found: ${userId}`);
+      return false;
+    }
+
+    user.totpSecret = undefined;
+    user.totpEnabled = false;
+    logger.info(`✅ TOTP disabled for: ${user.username}`);
     return true;
   }
 }

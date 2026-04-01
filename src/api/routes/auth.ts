@@ -21,9 +21,9 @@ router.post('/login', rateLimitLogin, (req: Request, res: Response) => {
       return;
     }
 
-    const token = authService.login(username, password);
+    const result = authService.login(username, password);
 
-    if (!token) {
+    if (!result) {
       res.status(401).json({
         error: 'Unauthorized',
         message: 'Invalid username or password',
@@ -31,7 +31,19 @@ router.post('/login', rateLimitLogin, (req: Request, res: Response) => {
       return;
     }
 
-    // Set secure cookie
+    // Check if TOTP is required
+    if (result.type === 'totp_required') {
+      res.json({
+        success: false,
+        requiresTotp: true,
+        challengeToken: result.challengeToken,
+        message: 'TOTP verification required',
+      });
+      return;
+    }
+
+    // Password-only login (no 2FA)
+    const token = result.token;
     res.setHeader(
       'Set-Cookie',
       `authToken=${token.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${24 * 60 * 60}`,
@@ -276,6 +288,177 @@ router.post('/users/:userId/deactivate', verifyAuth, requireAdmin, (req: Request
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to deactivate user',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/totp/verify
+ * Verify TOTP code and complete login
+ */
+router.post('/totp/verify', rateLimitLogin, (req: Request, res: Response) => {
+  try {
+    const { challengeToken, code } = req.body;
+
+    if (!challengeToken || !code) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Challenge token and TOTP code required',
+      });
+      return;
+    }
+
+    if (code.length !== 6 || !/^\d+$/.test(code)) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'TOTP code must be 6 digits',
+      });
+      return;
+    }
+
+    const token = authService.verifyTotp(challengeToken, code);
+
+    if (!token) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or expired TOTP code',
+      });
+      return;
+    }
+
+    // Set secure cookie
+    res.setHeader(
+      'Set-Cookie',
+      `authToken=${token.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${24 * 60 * 60}`,
+    );
+
+    res.json({
+      success: true,
+      token: token.token,
+      expiresIn: token.expiresAt - token.createdAt,
+      message: 'TOTP verification successful',
+    });
+  } catch (error) {
+    logger.error('TOTP verification error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'TOTP verification failed',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/totp/setup
+ * Initiate TOTP setup - returns secret and QR code
+ */
+router.post('/totp/setup', verifyAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await authService.setupTotp(req.user!.id);
+
+    if (!result) {
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Failed to setup TOTP',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      secret: result.secret,
+      otpauthUrl: result.otpauthUrl,
+      qrCodeDataUrl: result.qrCodeDataUrl,
+      message: 'TOTP setup initiated',
+    });
+  } catch (error) {
+    logger.error('TOTP setup error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'TOTP setup failed',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/totp/enable
+ * Verify TOTP code and enable 2FA
+ */
+router.post('/totp/enable', verifyAuth, (req: Request, res: Response) => {
+  try {
+    const { secret, code } = req.body;
+
+    if (!secret || !code) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Secret and TOTP code required',
+      });
+      return;
+    }
+
+    if (code.length !== 6 || !/^\d+$/.test(code)) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'TOTP code must be 6 digits',
+      });
+      return;
+    }
+
+    const success = authService.verifyAndEnableTotp(req.user!.id, secret, code);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: '2FA enabled successfully',
+      });
+    } else {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid TOTP code',
+      });
+    }
+  } catch (error) {
+    logger.error('TOTP enable error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to enable TOTP',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/totp/disable
+ * Disable 2FA (admin only)
+ */
+router.post('/totp/disable', verifyAuth, requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'User ID required',
+      });
+      return;
+    }
+
+    const success = authService.disableTotp(userId);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: '2FA disabled',
+      });
+    } else {
+      res.status(404).json({
+        error: 'Not Found',
+        message: 'User not found',
+      });
+    }
+  } catch (error) {
+    logger.error('TOTP disable error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to disable TOTP',
     });
   }
 });

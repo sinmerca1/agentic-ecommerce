@@ -188,6 +188,24 @@
     .info-text strong {
       color: #00ff41;
     }
+
+    .hidden {
+      display: none;
+    }
+
+    .step-indicator {
+      color: #00cc33;
+      font-size: 10px;
+      text-align: center;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .step-indicator.active {
+      color: #00ff41;
+      text-shadow: 0 0 10px #00ff41;
+    }
   </style>
 </head>
 <body>
@@ -200,47 +218,82 @@
     <div class="error-message" id="errorMessage"></div>
     <div class="success-message" id="successMessage"></div>
 
-    <form id="loginForm">
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input
-          type="text"
-          id="username"
-          name="username"
-          placeholder="Enter username"
-          required
-          autocomplete="username"
-        />
-      </div>
+    <!-- Step 1: Password Login -->
+    <div id="passwordStep">
+      <div class="step-indicator active">Step 1: Credentials</div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            placeholder="Enter username"
+            required
+            autocomplete="username"
+          />
+        </div>
 
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input
-          type="password"
-          id="password"
-          name="password"
-          placeholder="Enter password"
-          required
-          autocomplete="current-password"
-        />
-      </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter password"
+            required
+            autocomplete="current-password"
+          />
+        </div>
 
-      <button type="submit" class="login-button" id="loginBtn">Login</button>
-      <div class="loading" id="loading">
-        <span class="spinner"></span>Authenticating...
-      </div>
-    </form>
+        <button type="submit" class="login-button" id="loginBtn">Login</button>
+        <div class="loading" id="loading">
+          <span class="spinner"></span>Authenticating...
+        </div>
+      </form>
 
-    <div class="info-text">
-      <p>
-        <strong>Default Credentials:</strong><br>
-        Username: <strong>admin</strong><br>
-        Password: Check server logs or .env
-      </p>
+      <div class="info-text">
+        <p>
+          <strong>Default Credentials:</strong><br>
+          Username: <strong>admin</strong><br>
+          Password: Check server logs or .env
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 2: TOTP Verification -->
+    <div id="totpStep" class="hidden">
+      <div class="step-indicator active">Step 2: 2FA Verification</div>
+      <form id="totpForm">
+        <div class="form-group">
+          <label for="totpCode">Authenticator Code</label>
+          <input
+            type="text"
+            id="totpCode"
+            name="totpCode"
+            maxlength="6"
+            placeholder="000000"
+            required
+            autocomplete="one-time-code"
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+          />
+        </div>
+
+        <button type="submit" class="login-button" id="totpBtn">Verify Code</button>
+        <div class="loading" id="totpLoading">
+          <span class="spinner"></span>Verifying...
+        </div>
+      </form>
+
+      <div class="info-text">
+        <p>Enter the 6-digit code from your authenticator app</p>
+      </div>
     </div>
   </div>
 
   <script>
+    // DOM elements
     const loginForm = document.getElementById('loginForm');
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
@@ -248,6 +301,17 @@
     const errorMessage = document.getElementById('errorMessage');
     const successMessage = document.getElementById('successMessage');
     const loading = document.getElementById('loading');
+
+    const totpForm = document.getElementById('totpForm');
+    const totpCodeInput = document.getElementById('totpCode');
+    const totpBtn = document.getElementById('totpBtn');
+    const totpLoading = document.getElementById('totpLoading');
+
+    const passwordStep = document.getElementById('passwordStep');
+    const totpStep = document.getElementById('totpStep');
+
+    // State
+    let pendingChallenge = null;
 
     // Check if already logged in
     function checkAuth() {
@@ -281,6 +345,19 @@
       if (parts.length === 2) return parts.pop().split(';').shift();
     }
 
+    function showPasswordStep() {
+      passwordStep.classList.remove('hidden');
+      totpStep.classList.add('hidden');
+      usernameInput.focus();
+    }
+
+    function showTotpStep() {
+      passwordStep.classList.add('hidden');
+      totpStep.classList.remove('hidden');
+      totpCodeInput.focus();
+    }
+
+    // Step 1: Password Login
     loginForm.addEventListener('submit', async e => {
       e.preventDefault();
 
@@ -312,9 +389,19 @@
           return;
         }
 
-        // Store token
-        localStorage.setItem('authToken', data.token);
+        // Check if 2FA is required
+        if (data.requiresTotp) {
+          pendingChallenge = data.challengeToken;
+          showSuccess('Password verified! Enter your 2FA code.');
+          setTimeout(() => {
+            showTotpStep();
+            successMessage.classList.remove('show');
+          }, 500);
+          return;
+        }
 
+        // No 2FA - direct login
+        localStorage.setItem('authToken', data.token);
         showSuccess('Login successful! Redirecting...');
 
         // Redirect after brief delay
@@ -327,6 +414,64 @@
       } finally {
         loginBtn.disabled = false;
         loading.classList.remove('show');
+      }
+    });
+
+    // Step 2: TOTP Verification
+    totpForm.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const code = totpCodeInput.value.trim();
+
+      if (!code || code.length !== 6 || !/^\d+$/.test(code)) {
+        showError('TOTP code must be 6 digits');
+        return;
+      }
+
+      if (!pendingChallenge) {
+        showError('Session expired. Please login again.');
+        showPasswordStep();
+        return;
+      }
+
+      totpBtn.disabled = true;
+      totpLoading.classList.add('show');
+      errorMessage.classList.remove('show');
+
+      try {
+        const response = await fetch('/api/auth/totp/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            challengeToken: pendingChallenge,
+            code: code,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.message || 'Invalid TOTP code');
+          totpCodeInput.value = '';
+          totpCodeInput.focus();
+          return;
+        }
+
+        // 2FA verified - store token and redirect
+        localStorage.setItem('authToken', data.token);
+        showSuccess('2FA verified! Logging in...');
+
+        setTimeout(() => {
+          window.location.href = '/index.html';
+        }, 1000);
+      } catch (error) {
+        showError('Connection error. Please try again.');
+        console.error('TOTP verification error:', error);
+      } finally {
+        totpBtn.disabled = false;
+        totpLoading.classList.remove('show');
       }
     });
 
@@ -343,8 +488,8 @@
     // Check auth on page load
     checkAuth();
 
-    // Focus on username field
-    usernameInput.focus();
+    // Show password step initially
+    showPasswordStep();
   </script>
 </body>
 </html>
