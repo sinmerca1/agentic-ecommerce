@@ -45,18 +45,24 @@ When responding to pricing queries:
         return this.addMessage(state, 'assistant', response);
       }
 
+      // Only use the top 1 most relevant product to reduce context size
+      const topProduct = products[0];
+      const truncateDescription = (desc: string, maxLength: number = 200): string => {
+        return desc.length > maxLength ? desc.substring(0, maxLength) + '...' : desc;
+      };
+
       // Generate response with product information
       const context = {
-        products: products.map((p: any) => ({
-          product_id: p.product_id,
-          name: p.name,
-          description: p.description,
-          price: p.price,
-          stock: p.stock,
-          category: p.category,
-          rating: p.rating,
-          status: p.status,
-        })),
+        product: {
+          product_id: topProduct.product_id,
+          name: topProduct.name,
+          description: truncateDescription(topProduct.description),
+          price: topProduct.price,
+          stock: topProduct.stock,
+          category: topProduct.category,
+          rating: topProduct.rating,
+          status: topProduct.status,
+        },
       };
 
       const response = await this.generateResponse(lastMessage, context);
@@ -67,14 +73,12 @@ When responding to pricing queries:
       // Send email notification if customer email is provided
       if (state.context?.customerEmail) {
         try {
-          if (products.length > 0) {
-            await emailService.sendPricingInquiryResponse(
-              state.context.customerEmail,
-              products[0].name,
-              products[0].price,
-              products[0].stock
-            );
-          }
+          await emailService.sendPricingInquiryResponse(
+            state.context.customerEmail,
+            topProduct.name,
+            topProduct.price,
+            topProduct.stock
+          );
         } catch (error) {
           this.logger.error('Failed to send pricing email:', error);
           // Don't fail the entire request due to email error
