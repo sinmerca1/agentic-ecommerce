@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 import { logger, createChild } from '../utils/logger';
 import { AgentState, Message } from '../types';
 import { ollamaService } from '../services/ollama';
+import { cacheService } from '../services/cache';
 
 export abstract class BaseAgent {
   protected agentId: string;
@@ -18,6 +19,13 @@ export abstract class BaseAgent {
     userMessage: string,
     context: Record<string, any> = {}
   ): Promise<string> {
+    // Check cache first
+    const cachedResponse = cacheService.get(userMessage, context);
+    if (cachedResponse) {
+      this.logger.info('Cache hit for query:', { query: userMessage });
+      return cachedResponse;
+    }
+
     const systemPrompt = this.systemPrompt();
     const conversationContext = this.formatContext(context);
 
@@ -30,9 +38,14 @@ export abstract class BaseAgent {
       const response = await ollamaService.generateText(
         userMessage,
         fullSystemPrompt,
-        0.7
+        0.3
       );
-      return response.trim();
+      const trimmedResponse = response.trim();
+
+      // Cache the response
+      cacheService.set(userMessage, context, trimmedResponse);
+
+      return trimmedResponse;
     } catch (error) {
       this.logger.error('Failed to generate response:', error);
       throw error;

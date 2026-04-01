@@ -9,7 +9,7 @@ class OllamaService {
   constructor() {
     this.client = axios.create({
       baseURL: config.OLLAMA_BASE_URL,
-      timeout: 120000,
+      timeout: 60000,
     });
   }
 
