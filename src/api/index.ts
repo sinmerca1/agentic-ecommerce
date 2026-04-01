@@ -4,6 +4,7 @@ import { errorHandler, requestLogger } from './middleware/errorHandler';
 import agentsRouter from './routes/agents';
 import productsRouter from './routes/products';
 import supportRouter from './routes/support';
+import controlRouter from './routes/control';
 
 export function createApp(): Express {
   const app = express();
@@ -21,6 +22,7 @@ export function createApp(): Express {
   app.use('/api/agents', agentsRouter);
   app.use('/api/products', productsRouter);
   app.use('/api/support', supportRouter);
+  app.use('/api/control', controlRouter);
 
   // Error handling
   app.use(errorHandler);
